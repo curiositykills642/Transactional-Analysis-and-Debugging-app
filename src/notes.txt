@@ -1,0 +1,10 @@
+
+
+sabse pehle navbar
+global bitmap
+fir get all detials
+usmein combiner
+usmein ek doh aur files
+fir sort ig
+
+https://www.udemy.com/course/writing-clean-code/

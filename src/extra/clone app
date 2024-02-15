@@ -1,0 +1,251 @@
+function App( props ) {
+  const defaultDate = defaultDates("daily");
+  const [startDate, setStartDate] = useState(defaultDate[1]);
+  const [endDate, setEndDate] = useState(defaultDate[0]);
+  const [startTime, setStartTime] = useState("00:00");
+  const [endTime, setEndTime] = useState("00:00");
+
+  // const [successfullTxnCount, setSuccessfullTxnCount] = useState([]);
+  // const [unSuccessfullTxnCount, setUnSuccessfullTxnCount] = useState([]);
+  const [dataArray, setDataArray] = useState([]);
+  const [tableName, setTableName] = useState("");
+  const [hidden, setHidden] = useState(0); // hide or unhide table 1 = succ table , 2 = unsucc table , 3 = reasons table , 0 = no table.
+  const [stage, setStage] = useState("prod");
+  const [isLoading, setIsLoading] = useState("false");
+
+  const [dynamoDB_Pre, setDynamoBD_Pre] = useState([]);
+  const [dynamoDB_Prod, setDynamoBD_Prod] = useState([]);
+  const [globalBitmap_Pre, setGlobalBitmap_Pre] = useState({});
+  const [globalBitmap_Prod, setGlobalBitmap_Prod] = useState({});
+  const [pendingTxnsTable, setPendingTxnsTable] = useState([]);
+  const [ titles , setTittles] = useState([]);
+  const [ contents , setContents] =  useState([]);
+  const { txnData } = useContext(MyContext);
+  const location = useLocation();
+  const data = location.state;
+
+  useEffect(() => {
+    // this makes sure a user is doesnt exit by mistake.
+    const handleBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = "Are you Sure want to EXIT the page ?";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, []);
+
+ 
+  const startEpoch = getEpochTime(startDate, startTime); // setting startEpohTime to epoch of start.
+  const endEpoch = getEpochTime(endDate, endTime); // // setting endEpohTime to epoch of end.
+
+  useEffect(() => {
+    async function setDB() {
+      setDynamoBD_Prod(props.array[0]);
+      setGlobalBitmap_Prod(props.array[1]);
+
+      displayOriginalDynamoDB(); // this is used to load original dynamo DB. at data load up
+
+      setTittles(['Succesfull Txn\'s ', 'UnSuccesfull Txn\'s ', 'Pending Txn\'s ' , 'All Txn\'s']);
+      setContents(['Select Dates', ' -- ', ' -- ' ,  ' -- ']);
+    }
+    setDB();
+  }, []);
+
+  async function submitHandler() {
+
+    setIsLoading("false");
+    let DB = stage === "prod" ? dynamoDB_Prod : dynamoDB_Pre;
+    let bitmap = stage === "prod" ? globalBitmap_Prod : globalBitmap_Pre;
+    let arr = await getAllDetails(startEpoch, endEpoch, DB, bitmap);
+    console.log("DB between given dates imported");
+
+    setDataArray(arr);
+
+    let pendingTxnTable = await PendingTxns(arr[4]); // setting pending transactions
+    setPendingTxnsTable(pendingTxnTable);
+
+    let counts = [ arr[0]  , arr[2] , pendingTxnTable.length , arr[0] + arr[2] + pendingTxnTable.length];
+    setContents(counts);
+
+  }
+
+  function displaySuccessfullTxns() {
+    setTableName("Successfull Transactions ( " + dataArray[1].length + " )");
+    setHidden(1);
+  }
+
+  function displayUnSuccessfullTxns() {
+    setTableName("Unsuccessfull Transactions ( " + dataArray[3].length + " )");
+    setHidden(2);
+  }
+
+  function displayPendingTxns(){
+    setTableName("Pending Transactions ( " + pendingTxnsTable.length + " )");
+    setHidden(5);
+  }
+
+  function getReason() {
+    setHidden(3);
+    setTableName("Unsuccessfull Transaction's Reason");
+  }
+
+  function displayOriginalDynamoDB() {
+    setHidden(4);
+    setTableName("All Transactions Table ( " + dynamoDB_Prod.length + " )");
+  }
+
+  function handleDownload() {
+    if (hidden === 1) {
+      console.log("downloading succesfullTxnsTable.csv");
+      csvMaker(dataArray[1], "succesfull");
+    } else if (hidden === 2) {
+      console.log("downloading unSuccesfullTxnsTable.csv");
+      csvMaker(dataArray[3], "unsuccesfull");
+    } else if (hidden === 3) {
+      console.log("downloading reasonsForUnSuccesfullTxnsTable.csv");
+      csvMaker(dataArray[4], "reasons");
+    } else if (hidden === 4) {
+      console.log("downloading AllTxnsTable.csv");
+      csvMaker(dynamoDB_Prod, "AllTxnsTable");
+    }else if (hidden === 5) {
+      console.log("downloading PendingTxnsTable.csv");
+      csvMaker( pendingTxnsTable , "Pending");
+    }
+  }
+
+  return (
+    <div className="App">
+      <div className="inp">
+        <span className="inp1">
+          <span className="inp2">Start Date : </span>
+          <input
+            value={startDate}
+            className="date mr-2"
+            type="date"
+            onChange={(e) => setStartDate(e.target.value)}
+          />
+          <input
+            value={startTime}
+            type="time"
+            className="time mr-2"
+            onChange={(e) => setStartTime(e.target.value)}
+          />
+        </span>
+
+        <span>
+          <span className="inp2">End Date : </span>
+          <input
+            value={endDate}
+            className="date mr-2"
+            type="date"
+            onChange={(e) => setEndDate(e.target.value)}
+          />
+          <input
+            value={endTime}
+            className="time mr-2"
+            type="time"
+            onChange={(e) => setEndTime(e.target.value)}
+          />
+        </span>
+
+        <span>
+          <button className="btn btn-dark m-4" onClick={submitHandler}>
+            Submit , TO get TXN data
+          </button>
+        </span>
+
+        <span>
+          <button
+            className="btn btn-dark m-1"
+            onClick={() => setStage("pre-prod")}
+          >
+            Pre-Prod
+          </button>
+        </span>
+
+        <span>
+          <button className="btn btn-dark m-1" onClick={() => setStage("prod")}>
+            Prod
+          </button>
+        </span>
+
+        <span>
+          <h3 style={{ marginBottom: "0px", paddingBottom: "0.5rem" }}>
+            Set to {stage}
+          </h3>
+        </span>
+      </div>
+      {/* <div>
+        <FirstDiv/>
+      </div> */}
+
+      <div style={{ display: "flex" }}>
+        <div className="functions">
+
+          <div>
+            <Box titles={titles} contents={contents} />
+          </div>
+
+          <h3 className="inp3 button-container">Functions</h3>
+
+          <div class="button-container">
+            <button className="btn btn-dark m-2" onClick={displaySuccessfullTxns} >
+              <FcCheckmark/> Succesfull Txn's Table
+            </button>
+          </div>
+
+          <div class="button-container">
+            <button className="btn btn-dark m-2" onClick={displayUnSuccessfullTxns}>
+              <MdDangerous/> Unsuccesfull Txn's Table
+            </button>
+          </div>
+
+          <div class="button-container">
+            <button className="btn btn-dark m-2" onClick={displayPendingTxns}>
+              <FaHourglassHalf/> Pending Txn's Table
+            </button>
+          </div>
+
+          <div class="button-container">
+            <button className="btn btn-dark m-2" onClick={getReason}>
+              <BiCommentDetail/> Reason for UnSuccessfull
+            </button>
+          </div>
+
+          <div class="button-container">
+            <button className="btn btn-dark m-2" onClick={displayOriginalDynamoDB} >
+              <FaListAlt/> All TXN'S
+            </button>
+          </div>
+        </div>
+
+        <div className="table">
+          {hidden === 0 && isLoading !== "false" && <h4>{isLoading}</h4>}
+          {hidden !== 0 && (
+            <h3 className="inp3">
+              {tableName}
+              <button
+                className="btn btn-dark m-3 print"
+                onClick={handleDownload}
+              >
+                Download
+              </button>
+            </h3>
+          )}
+
+          <div className="inp3">
+            {hidden === 1 && MyTable(dataArray[1])}
+            {hidden === 2 && MyTable(dataArray[3])}
+            {hidden === 4 && MyTable(dynamoDB_Prod)}
+            {hidden === 3 && <ReasonsTable reasonsDB={dataArray[4]} />}
+            {hidden === 5 && <PendingTableMaker db = {pendingTxnsTable} />}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default App;
